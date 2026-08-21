@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# PyCharm
+.idea/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime assessment files
+runtime_data/incoming/*
+runtime_data/processing/*
+runtime_data/processed/*
+runtime_data/rejected/*
+
+# Keep folder placeholders
+!runtime_data/incoming/.gitkeep
+!runtime_data/processing/.gitkeep
+!runtime_data/processed/.gitkeep
+!runtime_data/rejected/.gitkeep
+
