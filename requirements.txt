@@ -13,3 +13,8 @@ redis
 pytest
 pytest-asyncio
 httpx
+
+pandas
+pyomo
+highspy
+openpyxl
