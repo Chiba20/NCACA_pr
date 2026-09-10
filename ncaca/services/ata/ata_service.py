@@ -12,6 +12,8 @@ functions here change - the API layer and the optimizer stay untouched.
 
 import pandas as pd
 
+from ncaca.services.ata.item_analysis import run_item_analysis
+from ncaca.services.ata.heuristic import run_heuristic
 from ncaca.services.ata.optimizer import run_optimizer
 from ncaca.repositories.ata_repository import load_item_pool
 
@@ -80,3 +82,78 @@ def _build_items(mapping_df: pd.DataFrame, pvalue_df: pd.DataFrame) -> pd.DataFr
         on=["booklet", "qnum", "subject"],
         how="left",
     )
+
+
+def run_complete_ata(
+    responses_df: pd.DataFrame,
+    mapping_df: pd.DataFrame,
+    subject: str,
+    method: str = "optimizer",
+    time_limit: int = 60,
+) -> dict:
+    """
+    Run the ATA workflow from scored responses to booklet assignment.
+
+    Flow:
+        scored responses
+            -> item p-value calculation
+            -> subject item pool
+            -> heuristic OR formal optimizer
+            -> result
+    """
+
+    analysis = run_item_analysis(
+        responses_df,
+        mapping_df,
+    )
+
+    item_pvalues = analysis["item_pvalues"]
+
+    pool = load_item_pool(
+        mapping_df,
+        item_pvalues,
+        subject,
+    )
+
+    if len(pool) == 0:
+        return {
+            "error": f"No subject found called '{subject}'"
+        }
+
+    if method == "heuristic":
+        result = run_heuristic(pool)
+
+        return {
+            "subject": subject,
+            "method": "heuristic",
+            "n_items_assigned": int(len(result["assignment"])),
+            "spread_before": result["spread_before"],
+            "spread_after": result["spread_after"],
+            "assignment": result["assignment"],
+            "report": result["report"],
+            "competency_summary": analysis["competency_summary"],
+        }
+
+    if method == "optimizer":
+        result = run_optimizer(
+            pool,
+            time_limit=time_limit,
+        )
+
+        return {
+            "subject": subject,
+            "method": "optimizer",
+            "n_items_assigned": int(len(result["assignment"])),
+            "spread": result["spread"],
+            "solver_status": result["report"]["solver_status"],
+            "all_hard_rules_passed": result["report"]["all_hard_rules_passed"],
+            "assignment": result["assignment"],
+            "report": result["report"],
+            "competency_summary": analysis["competency_summary"],
+        }
+
+    return {
+        "error": (
+            "Invalid method. Use 'heuristic' or 'optimizer'."
+        )
+    }
