@@ -37,3 +37,6 @@ runtime_data/rejected/*
 !runtime_data/processed/.gitkeep
 !runtime_data/rejected/.gitkeep
 
+
+# Local ATA assessment data
+data/ata/

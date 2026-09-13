@@ -1,46 +1,100 @@
 """
 ncaca/api/v1/ata.py
------------------------
-FastAPI routing for ATA - deliberately thin. This layer only handles
-HTTP concerns (routes, request/response shapes) and delegates all real
-work to services/ata/ata_service.py. No business logic and no
-optimization math should ever live in this file.
+-------------------
+FastAPI routing for ATA.
+
+This layer handles only HTTP concerns and delegates ATA processing to
+the service layer or Celery background tasks.
 """
 
+from celery.result import AsyncResult
 from fastapi import APIRouter
 
 from ncaca.repositories.ata_repository import load_mapping_and_pvalues
+from ncaca.schemas.ata import (
+    OptimizeRequest,
+    OptimizeTaskResponse,
+    OptimizeTaskStatusResponse,
+)
 from ncaca.services.ata import ata_service
-from ncaca.schemas.ata import OptimizeRequest, OptimizeResponse
+from ncaca.workers.celery_app import celery_app
+from ncaca.workers.tasks.ata_tasks import optimize_ata_task
+
 
 router = APIRouter(
     prefix="/ata",
     tags=["ATA"],
 )
 
-# Loaded once at startup - swap for a DB-backed repository call later
-# without changing anything below this line.
-_mapping_df, _pvalue_df = load_mapping_and_pvalues()
-
 
 @router.get("/subjects")
 async def list_subjects():
-    """All subjects, with how many competencies and questions each has."""
-    return ata_service.get_subjects_summary(_mapping_df, _pvalue_df)
+    """Return available subjects and their ATA item counts."""
+    mapping_df, pvalue_df = load_mapping_and_pvalues()
+
+    return ata_service.get_subjects_summary(
+        mapping_df,
+        pvalue_df,
+    )
 
 
 @router.get("/competencies/{competency_id}")
 async def get_competency(competency_id: str):
-    """Difficulty stats for one topic - e.g. /api/v1/ata/competencies/M-A1"""
-    return ata_service.get_competency_difficulty(_mapping_df, _pvalue_df, competency_id)
+    """Return difficulty statistics for one competency."""
+    mapping_df, pvalue_df = load_mapping_and_pvalues()
+
+    return ata_service.get_competency_difficulty(
+        mapping_df,
+        pvalue_df,
+        competency_id,
+    )
 
 
-@router.post("/optimize", response_model=OptimizeResponse)
+@router.post("/optimize", response_model=OptimizeTaskResponse)
 async def run_optimizer(request: OptimizeRequest):
     """
-    Run the formal Pyomo+HiGHS optimizer for one subject.
-    Note: this can take up to `time_limit` seconds (default 60).
+    Submit ATA optimization as a Celery background job.
     """
-    return ata_service.run_ata_optimization(
-        _mapping_df, _pvalue_df, request.subject, request.time_limit
+    task = optimize_ata_task.apply_async(
+        args=[request.subject, request.time_limit]
     )
+
+    return {
+        "task_id": task.id,
+        "status": "PENDING",
+        "message": "ATA optimization submitted successfully.",
+    }
+
+
+@router.get(
+    "/tasks/{task_id}",
+    response_model=OptimizeTaskStatusResponse,
+)
+async def get_optimizer_task_status(task_id: str):
+    """
+    Check the status and result of an ATA optimization task.
+    """
+    task = AsyncResult(task_id, app=celery_app)
+
+    if task.successful():
+        return {
+            "task_id": task_id,
+            "status": task.status,
+            "result": task.result,
+            "error": None,
+        }
+
+    if task.failed():
+        return {
+            "task_id": task_id,
+            "status": task.status,
+            "result": None,
+            "error": str(task.result),
+        }
+
+    return {
+        "task_id": task_id,
+        "status": task.status,
+        "result": None,
+        "error": None,
+    }

@@ -1,31 +1,66 @@
 """
 ncaca/repositories/ata_repository.py
----------------------------------------
-The only place ATA touches its data source directly.
+------------------------------------
+ATA data-access boundary.
 
-Right now this reads from CSV files (mapping.csv, pvalue_by_question.csv),
-matching the rest of the current NCACA architecture. If ATA later needs to
-read from PostgreSQL instead, ONLY this file changes - the service layer
-and optimizer never need to know where the data came from.
+The current implementation reads local CSV files for development and
+verification. File locations can be overridden through environment
+variables. A future PostgreSQL implementation can replace this logic
+without changing the ATA service or optimizer.
 """
+
+import os
+from pathlib import Path
 
 import pandas as pd
 
 
-def load_mapping_and_pvalues(mapping_path: str = "mapping.csv",
-                              pvalue_path: str = "pvalue_by_question.csv"):
-    """Load the two source tables. Swap this for a DB query later if needed."""
+DEFAULT_MAPPING_PATH = Path("data") / "ata" / "mapping.csv"
+DEFAULT_PVALUE_PATH = Path("data") / "ata" / "outputs" / "pvalue_by_question.csv"
+
+
+def load_mapping_and_pvalues(
+    mapping_path: str | Path | None = None,
+    pvalue_path: str | Path | None = None,
+):
+    """Load ATA mapping and item-difficulty tables."""
+
+    mapping_path = Path(
+        mapping_path
+        or os.getenv("ATA_MAPPING_PATH", str(DEFAULT_MAPPING_PATH))
+    )
+
+    pvalue_path = Path(
+        pvalue_path
+        or os.getenv("ATA_PVALUE_PATH", str(DEFAULT_PVALUE_PATH))
+    )
+
     mapping_df = pd.read_csv(mapping_path)
     pvalue_df = pd.read_csv(pvalue_path)
+
     return mapping_df, pvalue_df
 
 
-def load_item_pool(mapping_df: pd.DataFrame, pvalue_df: pd.DataFrame, subject: str) -> pd.DataFrame:
-    """Build the full item pool for one subject: every question, its
-    competency, and its measured difficulty."""
+def load_item_pool(
+    mapping_df: pd.DataFrame,
+    pvalue_df: pd.DataFrame,
+    subject: str,
+) -> pd.DataFrame:
+    """Build the item pool for one subject."""
+
     pool = mapping_df.merge(
-        pvalue_df[["booklet", "qnum", "subject", "p_value", "attempted", "correct"]],
+        pvalue_df[
+            [
+                "booklet",
+                "qnum",
+                "subject",
+                "p_value",
+                "attempted",
+                "correct",
+            ]
+        ],
         on=["booklet", "qnum", "subject"],
         how="left",
     )
+
     return pool[pool["subject"] == subject].copy()

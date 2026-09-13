@@ -40,3 +40,16 @@ class OptimizeResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: str
+
+
+class OptimizeTaskResponse(BaseModel):
+    task_id: str
+    status: str
+    message: str
+
+
+class OptimizeTaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    result: OptimizeResponse | None = None
+    error: str | None = None
